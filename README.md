@@ -3,6 +3,11 @@
 > 全自动影视入库系统：夸克分享链接 → TMDB 匹配 → 画质自动升级 → 转存夸克 → 规范化命名 → 飞书同步
 > 本仓库仅开源**流程与架构**，所有真实凭据（夸克 cookie、TMDB key、飞书密钥、CASX 密码）均通过环境变量注入，不包含任何敏感信息。
 
+[![CI](https://github.com/kjjftgf/media-automation/actions/workflows/ci.yml/badge.svg)](https://github.com/kjjftgf/media-automation/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python](https://img.shields.io/badge/Python-3.10%20%7C%203.11%20%7C%203.12-blue.svg)]()
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)]()
+
 ---
 
 ## 🎯 系统概览

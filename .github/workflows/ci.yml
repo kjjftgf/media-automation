@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+
+jobs:
+  syntax-check:
+    name: Python 语法检查
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 设置 Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: 编译检查所有脚本
+        run: |
+          set -e
+          # 编译核心/脚本/工具目录下的所有 Python 文件, 失败即退出
+          for dir in core scripts utils; do
+            for f in $dir/*.py; do
+              echo "检查 $f ..."
+              python -m py_compile "$f"
+            done
+          done
+          echo "✅ 全部语法通过"
+
+      - name: 敏感信息扫描 (凭据泄露防护)
+        run: |
+          set -e
+          # 防止真实凭据被提交: 这些模式在公开仓库中不应出现
+          if grep -rnE "cli_aaeafbffa5f85cf4|lyBqZdvfN8hmp9J3cTV9NcFNNT65NlK2|J8LXbbmO7akGDssLuwZcMgUcnog" . --include="*.py" --include="*.md" --include="*.txt" --include="*.example" 2>/dev/null; then
+            echo "❌ 检测到疑似敏感信息, 请检查!"; exit 1
+          fi
+          echo "✅ 无敏感信息"
