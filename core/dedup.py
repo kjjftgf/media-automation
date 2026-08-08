@@ -1,3 +1,4 @@
+import os
 import sqlite3,json,requests,time,re,sys
 BASE="https://drive-pc.quark.cn"
 db=sqlite3.connect("/app/backend/data/app.db")

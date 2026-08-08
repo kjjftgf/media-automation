@@ -3,8 +3,8 @@
 import os
 import urllib.request, json, time
 
-FEISHU_APP_ID = os.environ.get("FEISHU_APP_ID", "")
-FEISHU_APP_SECRET = os.environ.get("FEISHU_APP_SECRET", "")
+APP_ID = os.environ.get("FEISHU_APP_ID", "")
+APP_SECRET = os.environ.get("FEISHU_APP_SECRET", "")
 BITABLE_APP_TOKEN = os.environ.get("BITABLE_APP_TOKEN", "")
 
 # 三张表

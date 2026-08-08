@@ -2,14 +2,14 @@ import os
 import urllib.request, urllib.parse, json, sys
 
 # Login to CASX
-data = urllib.parse.urlencode({'username': 'admin', 'password': os.environ.get('CASX_ADMIN_PASSWORD', '')}).encode()
-req = urllib.request.Request('http://' + os.environ.get('CASX_HOST', '127.0.0.1:5115') + '/api/auth/login', data=data, 
+data = urllib.parse.urlencode({'username': 'admin', 'password': os.environ.get('CLOUDSAVER_ADMIN_CODE', '')}).encode()
+req = urllib.request.Request('http://127.0.0.1/api/auth/login', data=data, 
     headers={'Content-Type': 'application/x-www-form-urlencoded'})
 token = json.loads(urllib.request.urlopen(req, timeout=10).read())['access_token']
 
 # Test cloudsaver login
 data = json.dumps({'username': 'admin', 'password': os.environ.get('CLOUDSAVER_ADMIN_CODE', '')}).encode()
-req = urllib.request.Request('http://' + os.environ.get('CLOUDSAVER_HOST', '127.0.0.1:8008') + '/api/user/login', data=data,
+req = urllib.request.Request('http://127.0.0.1/api/user/login', data=data,
     headers={'Content-Type': 'application/json'})
 try:
     resp = urllib.request.urlopen(req, timeout=10)
@@ -20,7 +20,7 @@ except Exception as e:
 
 # Full suggestions response
 print()
-req = urllib.request.Request('http://' + os.environ.get('CASX_HOST', '127.0.0.1:5115') + '/api/tasks/suggestions?q=测试&d=0',
+req = urllib.request.Request('http://127.0.0.1/api/tasks/suggestions?q=完美世界&d=0',
     headers={'Authorization': 'Bearer ' + token})
 resp = urllib.request.urlopen(req, timeout=30)
 d = json.loads(resp.read())

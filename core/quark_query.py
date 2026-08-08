@@ -1,3 +1,4 @@
+import os
 import docker
 import json
 import requests

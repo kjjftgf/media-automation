@@ -1,3 +1,4 @@
+import os
 import sys
 sys.path.insert(0, "/workspace")
 from catchup import search_pansou, search_xiaokupan
