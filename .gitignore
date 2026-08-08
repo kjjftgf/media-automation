@@ -28,4 +28,3 @@ logs/
 # 编辑器
 .vscode/
 .idea/
-.github/workflows/ci.yml
