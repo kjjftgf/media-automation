@@ -3,6 +3,7 @@
 Docker容器健康监控脚本
 通过 Docker socket 检查关键容器状态，异常时自动重启
 """
+import os
 import socket, json, http.client, sys, os
 
 SOCK = "/var/run/docker.sock"

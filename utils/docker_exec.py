@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import os
 import json, sys, socket, http.client
 
 SOCK = "/var/run/docker.sock"

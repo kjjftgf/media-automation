@@ -8,13 +8,14 @@
 流程: 飞书查追更中 → xiaokupan.com搜新集 → 比较已有 → auto_import增量导入
 适合 cron 定期执行: 每6-12小时
 """
+import os
 import json, re, sys, time, subprocess, urllib.request, http.client
 from collections import defaultdict
 from datetime import datetime
 
 # ── 配置 ────────────────────────────────────────────────────────
-FEISHU_APP_ID = os.environ.get("FEISHU_APP_ID", "")
-FEISHU_APP_SECRET = os.environ.get("FEISHU_APP_SECRET", "")
+APP_ID = os.environ.get("FEISHU_APP_ID", "")
+APP_SECRET = os.environ.get("FEISHU_APP_SECRET", "")
 BITABLE_APP_TOKEN = os.environ.get("BITABLE_APP_TOKEN", "")
 
 TABLES = {
@@ -407,8 +408,8 @@ def search_xiaokupan(title, season=None, max_ep=0):
 def search_cloudsaver(title, season=None):
     """搜索 CloudSaver 找新分享链接 (API v2: data[0].list)"""
     try:
-        conn = http.client.HTTPConnection(os.environ.get("CLOUDSAVER_HOST", "127.0.0.1"), int(os.environ.get("CLOUDSAVER_PORT", "8008")), timeout=15)
-        body = json.dumps({"username": "admin", "password": os.environ.get("CLOUDSAVER_ADMIN_CODE", "")}).encode()
+        conn = http.client.HTTPConnection("127.0.0.1", 8008, timeout=15)
+        body = json.dumps({"username": "admin", "password": "230713"}).encode()
         conn.request("POST", "/api/user/login", body=body,
                      headers={"Content-Type": "application/json"})
         resp = conn.getresponse()
@@ -495,7 +496,7 @@ def parse_episodes_from_text(text):
 
 
 # ── PanSou 搜索 ─────────────────────────────────────────────────
-PANSOU_BASE = os.environ.get("PANSOU_BASE", "http://127.0.0.1:8888")
+PANSOU_BASE = "http://127.0.0.1"
 
 def search_pansou(title, season=None, max_ep=0):
     """搜索本地 PanSou 容器 (ghcr.io/fish2018/pansou, 61 plugins, 101 channels)
