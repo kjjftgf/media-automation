@@ -222,8 +222,10 @@ def list_share(share_id):
     sid_raw = m.group(1) if m else share_id
 
     anchor_dir = ""
-    m2 = re.search(r'#/list/share(/.*)?', share_id)
-    if m2 and m2.group(1): anchor_dir = m2.group(1).rstrip("/")
+    m2 = re.search(r'#/list/share(/.*)', share_id)
+    if m2 and m2.group(1):
+        import urllib.parse
+        anchor_dir = urllib.parse.unquote(m2.group(1)).rstrip("/")
 
     script = f"""import sqlite3, json, requests, time, re, sys
 BASE="https://drive-pc.quark.cn"
@@ -426,7 +428,7 @@ def pick_best_upgrade(candidates, original_url, analysis, season=None):
 # ═══════════════════════════════════════════════════════════════
 #  核心入库 — 基于 fix_v4.py 战绩验证逻辑
 # ═══════════════════════════════════════════════════════════════
-def do_import(share_id, tmdb_id, show_name, target_subdir="动漫", season=1, clean=True, password=""):
+def do_import(share_id, tmdb_id, show_name, target_subdir="动漫", season=1, clean=True, password="", anchor=""):
     """
     转存夸克分享 → task验证 → 规范化命名 → 返回统计
     ★ 完全重写: 原生POST保存 + task验证 + 季过滤rename
@@ -438,6 +440,7 @@ def do_import(share_id, tmdb_id, show_name, target_subdir="动漫", season=1, cl
       target_subdir: 目标子目录 ("动漫"/"剧集"/"电影")
       season:     当前季数 (用于文件命名和rename过滤)
       clean:      True=删除旧目录重建 / False=保留追加
+      anchor:     分享内子目录锚点路径 (如 "xxx/HDR"), 为空则取第一个目录
 
     返回: "IMPORTED|ep_count|size_gb|detected_quality|file_count"
     """
@@ -457,7 +460,7 @@ sys.path.insert(0,"/app/backend")
 from app.extensions.adapters.quark_adapter import QuarkAdapter
 adapter=QuarkAdapter(cookie=config['cookie'],account_name='quark')
 
-SHARE="{sid}"; TMDB="{tmdb_id}"; SHOW="{show_name}"; SE={season}; CLEAN={str(clean)}; PWD="{password}"
+SHARE="{sid}"; TMDB="{tmdb_id}"; SHOW="{show_name}"; SE={season}; CLEAN={str(clean)}; PWD="{password}"; ANCHOR="{anchor}"
 
 # ── Step 0: Cookie 健康检查 ──
 try:
@@ -509,8 +512,20 @@ def ls(pdir='0'):
 
 root=ls('0')
 rf='0'
-for x in root:
-    if x.get('dir'):rf=x['fid'];break
+if ANCHOR:
+    # 下钻到 anchor 路径 (如 "xxx/HDR")
+    parts=[p for p in ANCHOR.strip('/').split('/') if p]
+    cur='0'
+    for part in parts:
+        found=False
+        for x in ls(cur):
+            if x.get('dir') and x.get('file_name','')==part:
+                cur=x['fid'];found=True;break
+        if not found:print("ANCHOR_NOT_FOUND:"+part);sys.exit(1)
+    rf=cur
+else:
+    for x in root:
+        if x.get('dir'):rf=x['fid'];break
 
 # Collect files recursively from any nesting depth
 def collect_files(fid,depth=0):
@@ -573,17 +588,20 @@ time.sleep(10)
 
 # ── Step 4: 重命名 + 去重 — 只处理当前季文件! ──
 time.sleep(3)
-# file/sort pagination: size param unreliable, need to loop pages
-items=[]
-page=1
-while True:
-    r=requests.get(BASE+\"/1/clouddrive/file/sort\",
-        params={{'pr':'ucpro','fr':'pc','pdir_fid':TF,'page':str(page),'size':'200'}},headers=h,timeout=10)
-    batch=r.json()['data']['list']
-    if not batch:break
-    items.extend(batch)
-    if len(batch)<50:break
-    page+=1
+# ★ 用 adapter.ls_dir 替代 file/sort (file/sort 分页不可靠, size参数无效, 只返回部分)
+items=(adapter.ls_dir(TF).get('data',{{}}) or {{}}).get('list',[]) or []
+if not items:
+    # 兜底: file/sort 多页去重
+    items=[];seen=set()
+    for page in range(1,15):
+        r=requests.get(BASE+"/1/clouddrive/file/sort",
+            params={{'pr':'ucpro','fr':'pc','pdir_fid':TF,'page':str(page),'size':'200'}},headers=h,timeout=10)
+        batch=r.json()['data']['list']
+        if not batch:break
+        new=[x for x in batch if x['fid'] not in seen]
+        if not new:break
+        for x in new:seen.add(x['fid'])
+        items.extend(new)
 
 # 第一遍: 收集已有文件名 (用于冲突检测)
 existing_names=set(x['file_name'] for x in items)
@@ -658,9 +676,8 @@ if renamed or deleted_dup:
 
 # ── Step 5: 最终统计 + 画质检测 ──
 time.sleep(2)
-r=requests.get(BASE+"/1/clouddrive/file/sort",
-    params={{'pr':'ucpro','fr':'pc','pdir_fid':TF,'page':'1','size':'200'}},headers=h,timeout=10)
-v2=[x for x in r.json()['data']['list'] if not x.get('dir')]
+d5=adapter.ls_dir(TF)
+v2=[x for x in ((d5.get('data',{{}}) or {{}}).get('list',[]) or []) if not x.get('dir') and x.get('category')!=0]
 sz=round(sum(x['size'] for x in v2)/1073741824,1)
 
 quality_map={{3840:'4K',1920:'1080p',1280:'720p',7680:'8K'}}
@@ -716,7 +733,14 @@ if __name__ == "__main__":
     m = re.search(r'/s/([a-f0-9]+)', url)
     sid = m.group(1) if m else url
 
-    print(f"📎 分享: {sid}")
+    # 解析 anchor (分享内子目录锚点 #/list/share/xxx)
+    anchor = ""
+    m2 = re.search(r'#/list/share(/.*)', url)
+    if m2 and m2.group(1):
+        import urllib.parse
+        anchor = urllib.parse.unquote(m2.group(1)).lstrip("/")
+
+    print(f"📎 分享: {sid}" + (f" → 锚点: {anchor}" if anchor else ""))
 
     # ① 列出分享内容
     print("  📂 解析分享...")
@@ -727,6 +751,19 @@ if __name__ == "__main__":
     a = analyze(raw)
     if not a:
         print("  ❌ 无法解析"); sys.exit(1)
+
+    # anchor 模式: 用 anchor 第一段作为标题 (避免取到 HDR/DV/SDR 等目录名)
+    if anchor:
+        anchor_title = anchor.split("/")[0]
+        t = re.sub(r'[（(][^）)]*[）)]', '', anchor_title)
+        t = re.sub(r'\[[^\]]*\]', '', t)
+        t = re.sub(r'(?i)\b(4k|2160p|1080p|720p|hdr|dv|h\.?265|hevc|x265|x264|bluray|web-dl|webrip|dubbed|subbed|completed|完结|remux)\b', '', t)
+        t = re.sub(r'(?i)(4k|2160p|1080p|720p)', '', t)
+        t = re.sub(r'(?:蓝光|杜比视界|杜比全景声|杜比音效|杜比|全景声|高码率|高码|内封[简繁英中文字幕]+|内嵌[简繁英中文字幕]+|双语|中文字幕|原盘|REMUX)', '', t, flags=re.IGNORECASE)
+        t = re.sub(r'^[A-Za-z]\s*', '', t)
+        t = re.sub(r'\s+', ' ', t).strip().rstrip("._- ")
+        if t:
+            a["best_title"] = t
 
     size_gb = a["total_size"] / 1073741824
     q_str = ", ".join(a["qualities"]) if a["qualities"] else "?"
@@ -829,9 +866,15 @@ if __name__ == "__main__":
     # ⑤ 入库
     print(f"  📥 入库中 (→ {target_subdir}, S{args.season:02d}, clean={args.clean})...")
     pwd = args.password or ""
-    result = do_import(final_sid, tmdb_id, tmdb_name, target_subdir, args.season, args.clean, pwd)
+    result = do_import(final_sid, tmdb_id, tmdb_name, target_subdir, args.season, args.clean, pwd, anchor)
 
-    parts = result.strip().split("|")
+    # ★ 从 exec 输出中提取 IMPORTED 行 (可能被 RENAME/其他日志行干扰)
+    imported_line = ""
+    for line in result.strip().split("\n"):
+        if line.startswith("IMPORTED|"):
+            imported_line = line
+            break
+    parts = imported_line.split("|") if imported_line else []
     if len(parts) >= 5 and parts[0] == "IMPORTED":
         fc = int(parts[1])
         sz = float(parts[2])
