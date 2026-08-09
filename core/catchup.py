@@ -563,26 +563,42 @@ def search_pansou(title, season=None, max_ep=0):
 # ── 主流程 ──────────────────────────────────────────────────────
 def _tmdb_season_total(tmdb_id, season):
     """TMDB 该季总集数 — 用于过滤假阳性 (老九门48集混入九门搜索等).
-    返回 None 表示获取失败(不限制). 容差 +5: TMDB 国漫/国产剧集数可能滞后."""
+    返回 None 表示获取失败(降级为保守策略: 见 _is_new 的 max_ep+10 兜底).
+    容差 +5: TMDB 国漫/国产剧集数可能滞后."""
+    key = None
     try:
-        import sqlite3, ssl
+        import sqlite3
         db = sqlite3.connect("/app/backend/data/app.db")
         cfg = json.loads(db.execute(
             "SELECT config_json FROM tmdb_settings WHERE id=1").fetchone()[0])
         key = cfg["api_key"]
         db.close()
+    except Exception:
+        pass
+    if not key:
+        return None
+    url = f"https://api.themoviedb.org/3/tv/{tmdb_id}?api_key={key}&language=zh-CN"
+    # ⚠️ urllib 与 requests 都曾间歇失败 (DNS 污染时好时坏) — 双通道重试 (2026-08-10 加固)
+    d = None
+    try:
+        import ssl
         ctx = ssl.create_default_context()
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
-        url = f"https://api.themoviedb.org/3/tv/{tmdb_id}?api_key={key}&language=zh-CN"
         req = urllib.request.Request(url)
         d = json.loads(urllib.request.urlopen(req, context=ctx, timeout=15).read())
-        for s in d.get("seasons", []):
-            if s.get("season_number") == season:
-                return s.get("episode_count")
-        return None
     except Exception:
+        try:
+            import requests
+            d = requests.get(url, timeout=15, verify=False).json()
+        except Exception:
+            return None
+    if not isinstance(d, dict):
         return None
+    for s in d.get("seasons", []):
+        if s.get("season_number") == season:
+            return s.get("episode_count")
+    return None
 
 
 def check_show(show, dry_run=False):
@@ -598,6 +614,10 @@ def check_show(show, dry_run=False):
             return False
         if season_total is not None and e > season_total + 5:
             return False  # 超过TMDB总集数+容差 → 明显异常(串剧/旧剧), 拒绝
+        # season_total 获取失败时保守兜底: 超 max_ep+10 的集数拒绝
+        # (2026-08-10: 容器内 TMDB 调用曾静默失败→None→[48]假阳性连报3天)
+        if season_total is None and e > max_ep + 10:
+            return False
         return True
 
     # 搜索: xiaokupan (优先, 已评分排序) → PanSou → CloudSaver (备用)
