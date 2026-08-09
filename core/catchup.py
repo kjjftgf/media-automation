@@ -14,8 +14,8 @@ from collections import defaultdict
 from datetime import datetime
 
 # ── 配置 ────────────────────────────────────────────────────────
-APP_ID = os.environ.get("FEISHU_APP_ID", "")
-APP_SECRET = os.environ.get("FEISHU_APP_SECRET", "")
+FEISHU_APP_ID = os.environ.get("FEISHU_APP_ID", "")
+FEISHU_APP_SECRET = os.environ.get("FEISHU_APP_SECRET", "")
 BITABLE_APP_TOKEN = os.environ.get("BITABLE_APP_TOKEN", "")
 
 TABLES = {
