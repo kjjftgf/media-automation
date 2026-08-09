@@ -450,6 +450,14 @@ def do_import(share_id, tmdb_id, show_name, target_subdir="动漫", season=1, cl
 
     parent_fid = DIR_FIDS.get(target_subdir, DIR_FIDS["动漫"])
 
+    # 安全转义: 所有外部输入用 json.dumps 序列化, 杜绝代码注入
+    import json as _json
+    sid_safe = _json.dumps(sid)
+    tmdb_safe = _json.dumps(str(tmdb_id))
+    show_safe = _json.dumps(show_name)
+    pwd_safe = _json.dumps(password or "")
+    anchor_safe = _json.dumps(anchor or "")
+
     script = f"""import sqlite3, json, requests, time, re, sys
 BASE="https://drive-pc.quark.cn"
 db=sqlite3.connect("/app/backend/data/app.db")
@@ -460,7 +468,7 @@ sys.path.insert(0,"/app/backend")
 from app.extensions.adapters.quark_adapter import QuarkAdapter
 adapter=QuarkAdapter(cookie=config['cookie'],account_name='quark')
 
-SHARE="{sid}"; TMDB="{tmdb_id}"; SHOW="{show_name}"; SE={season}; CLEAN={str(clean)}; PWD="{password}"; ANCHOR="{anchor}"
+SHARE={sid_safe}; TMDB={tmdb_safe}; SHOW={show_safe}; SE={season}; CLEAN={str(clean)}; PWD={pwd_safe}; ANCHOR={anchor_safe}
 
 # ── Step 0: Cookie 健康检查 ──
 try:

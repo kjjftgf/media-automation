@@ -282,12 +282,28 @@ for item in verify_items:
     new_name = f"{SHOW_NAME} [tmdbid={TMDB_ID}].S{SE:02d}E{ep:02d}{ext}"
     print(f"RENAME: {fn[:50]} -> {new_name}")
     result = adapter.rename(fid, new_name)
-    rc = result.get("code")
+    rc = result.get("code") if isinstance(result, dict) else None
     if rc == 0:
         print(f"  OK")
     elif rc == 23008:
-        print(f"  CONFLICT: deleting source")
-        adapter.delete([fid])
+        # 重命名冲突: 目标名已存在。此时刚转存的文件是重复副本(同名已入库),
+        # 但为防误删唯一副本, 先确认目标文件确实存在再删除当前重复文件。
+        # 若无法确认, 保守处理: 保留文件不删, 交由人工/去重脚本处理。
+        print(f"  CONFLICT (23008): {new_name} 已存在")
+        try:
+            dup = adapter.ls_dir(TARGET_DIR_FID, max_items=200)
+            dup_items = dup.get("data", {}).get("list", []) if isinstance(dup, dict) else []
+            exists = any(
+                x.get("file_name") == new_name and x.get("fid") != fid
+                for x in dup_items
+            )
+            if exists:
+                print(f"  ⚠️ 确认目标已存在, 删除当前重复副本 (fid={fid})")
+                adapter.delete([fid])
+            else:
+                print(f"  🔒 未确认目标存在, 保留当前文件避免数据丢失 (fid={fid})")
+        except Exception as ex:
+            print(f"  🔒 冲突检查失败({ex}), 保留文件避免数据丢失 (fid={fid})")
     else:
         print(f"  FAIL: code={rc}")
 
