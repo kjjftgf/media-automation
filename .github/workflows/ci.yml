@@ -36,8 +36,9 @@ jobs:
       - name: 敏感信息扫描 (凭据泄露防护)
         run: |
           set -e
-          # 防止真实凭据被提交: 这些模式在公开仓库中不应出现
-          if grep -rnE "cli_aaeafbffa5f85cf4|lyBqZdvfN8hmp9J3cTV9NcFNNT65NlK2|J8LXbbmO7akGDssLuwZcMgUcnog" . --include="*.py" --include="*.md" --include="*.txt" --include="*.example" 2>/dev/null; then
+          # 防止真实凭据被提交: 匹配凭据的通用形态, 而非真实值(真实值不应出现在仓库任何位置)
+          # 匹配: 飞书 App ID (cli_ + 16位) / 长密钥(32+位) / 疑似 token 的赋值
+          if grep -rnE "cli_[a-zA-Z0-9]{16}|(APP_SECRET|app_secret|FEISHU_APP_SECRET)\s*=\s*\"[^\"]{16,}\"|(BITABLE_APP_TOKEN|app_token)\s*=\s*\"[^\"]{20,}\"" . --include="*.py" --include="*.md" --include="*.txt" --include="*.example" 2>/dev/null; then
             echo "❌ 检测到疑似敏感信息, 请检查!"; exit 1
           fi
           echo "✅ 无敏感信息"
