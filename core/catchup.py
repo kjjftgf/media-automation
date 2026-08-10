@@ -24,12 +24,19 @@ TABLES = {
     "movie": ("tblhSzGZwQ4SOBUe",   "🎬 名字"),
 }
 
-# 🔄追更中 option IDs — 每表不同！
+# 🔄追更中 状态 — 2026-08-10 表格改造后 状态字段读写均用选项名称(显示名)!
+# ⚠️ 读回的 select 字段值是显示名字符串('🔄追更中')，不是 option ID！
 STATUS_OPT_IDS = {
-    "tv":    "optVZqcuvs",
-    "anime": "optjAvUVGO",
-    "movie": "optHSJi1Hj",
+    "tv":    "🔄追更中",
+    "anime": "🔄追更中",
+    "movie": "🔄追更中",
 }
+
+def _status_text(v):
+    """归一化状态字段值: 可能是字符串('🔄追更中')或列表([{'text':..., 'id':...}])"""
+    if isinstance(v, list) and v:
+        return v[0].get("text", "") if isinstance(v[0], dict) else str(v[0])
+    return str(v) if v else ""
 
 
 # ── 飞书 API ───────────────────────────────────────────────────
@@ -58,7 +65,7 @@ def get_watching_shows():
             f"/bitable/v1/apps/{BITABLE_APP_TOKEN}/tables/{table_id}/records?page_size=100")
         for item in d.get("data", {}).get("items", []):
             fields = item.get("fields", {})
-            status = fields.get("状态", "")
+            status = _status_text(fields.get("状态", ""))
             if status != chase_opt:
                 continue
 
@@ -101,7 +108,7 @@ def get_watching_shows():
                 f"?page_size=100&page_token={pt}")
             for item in d.get("data", {}).get("items", []):
                 fields = item.get("fields", {})
-                if fields.get("状态", "") == chase_opt:
+                if _status_text(fields.get("状态", "")) == chase_opt:
                     name = fields.get(name_field, "")
                     tmdb = fields.get("TMDB ID", "")
                     if name and tmdb:
