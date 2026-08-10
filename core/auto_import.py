@@ -338,7 +338,14 @@ def analyze(raw):
         for y1, y2 in year_match: years.add(int(y1 + y2))
 
         for tag in quality_map:
-            if tag in name_lower: qualities.add(tag.upper() if len(tag) <= 3 else tag)
+            # ⚠️ 'dv' 必须词边界匹配 (2026-08-11 修复): 子串匹配会误伤 'dvd' (480p老片源被误判为杜比视界DV)
+            #    'xxx.DVD.xxx' → 'dv' in 'dvd' 为 True → 错误标记 DV(权重5最高) → has_4k 误判
+            #    正确: 杜比视界标签写法为 .DV. 或 .dv. (词边界), DVD 是标清载体与 DV 无关
+            if tag == 'dv':
+                if re.search(r'(?<![a-z])dv(?![a-z])', name_lower) and 'dvd' not in name_lower:
+                    qualities.add('DV')
+            elif tag in name_lower:
+                qualities.add(tag.upper() if len(tag) <= 3 else tag)
 
     has_4k = any(q in ("4K","2160P","HDR","DV","REMUX","UHD") for q in qualities)
 
@@ -409,7 +416,9 @@ def pick_best_upgrade(candidates, original_url, analysis, season=None):
         name_low = c['title'].lower()
         if '4k' in name_low or '2160p' in name_low: score += 10
         if 'hdr' in name_low: score += 8
-        if 'dv' in name_low: score += 9
+        # ⚠️ 'dv' 词边界匹配 (2026-08-11 修复): 'dvd' 标题会被误判为杜比视界+9
+        #    Apple 生态: DV P5/P8 完美点亮(权重最高), HDR10+ 不支持只按 HDR10 回放(已被上方 hdr 子串覆盖+8)
+        if re.search(r'(?<![a-z])dv(?![a-z])', name_low) and 'dvd' not in name_low: score += 9
         if 'remux' in name_low: score += 5
         # Season boost: match specific season in title
         if season and season > 1:
