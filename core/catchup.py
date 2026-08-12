@@ -294,12 +294,20 @@ def _score_search_result(result, title, season=None, max_ep=0):
         except Exception:
             pass
 
-    # 4) 画质加分 (0-10)
+    # 4) 画质加分 (0-10) — 2026-08-12 新标准: 公网可播优先, REMUX/原盘降权
     note_lower = note.lower()
     if '4k' in note_lower or '2160p' in note_lower:
         score += 10
     elif '1080p' in note_lower:
         score += 5
+    # ═══ 公网可播性修正 (2026-08-12) ═══
+    # REMUX/原盘/蓝光 = 50-90Mbps 高码率 → 公网(frp 半速20Mbps)必卡 → 降权
+    if 'remux' in note_lower: score -= 8
+    if '原盘' in note or 'bluray' in note_lower or '蓝光' in note: score -= 6
+    if '高码率' in note or '高码' in note: score -= 4
+    # WEB-DL/流媒体 = 码率适中 → 公网友好 → 加分
+    if 'web-dl' in note_lower or 'webdl' in note_lower or 'webrip' in note_lower \
+       or '流媒体' in note or '在线' in note: score += 4
 
     # 5) 来源可信度 (0-5)
     trusted_sources = ['ANi', 'LoliHouse', 'ReinForce', 'VCB-Studio']
@@ -568,9 +576,10 @@ def search_pansou(title, season=None, max_ep=0):
 
 
 # ── 主流程 ──────────────────────────────────────────────────────
-def _tmdb_season_total(tmdb_id, season):
-    """TMDB 该季总集数 — 用于过滤假阳性 (老九门48集混入九门搜索等).
-    返回 None 表示获取失败(降级为保守策略: 见 _is_new 的 max_ep+10 兜底).
+def _tmdb_season_info(tmdb_id, season):
+    """TMDB 该季总集数 + next_episode_to_air — 用于过滤假阳性.
+    返回 (episode_count, next_ep) 或 (None, None) 表示获取失败
+    (降级为保守策略: 见 _is_new 的 max_ep+10 兜底).
     容差 +5: TMDB 国漫/国产剧集数可能滞后."""
     key = None
     try:
@@ -583,7 +592,7 @@ def _tmdb_season_total(tmdb_id, season):
     except Exception:
         pass
     if not key:
-        return None
+        return None, None
     url = f"https://api.themoviedb.org/3/tv/{tmdb_id}?api_key={key}&language=zh-CN"
     # ⚠️ urllib 与 requests 都曾间歇失败 (DNS 污染时好时坏) — 双通道重试 (2026-08-10 加固)
     d = None
@@ -599,13 +608,15 @@ def _tmdb_season_total(tmdb_id, season):
             import requests
             d = requests.get(url, timeout=15, verify=False).json()
         except Exception:
-            return None
+            return None, None
     if not isinstance(d, dict):
-        return None
+        return None, None
+    nxt = d.get("next_episode_to_air") or {}
+    next_ep = nxt.get("episode_number")
     for s in d.get("seasons", []):
         if s.get("season_number") == season:
-            return s.get("episode_count")
-    return None
+            return s.get("episode_count"), next_ep
+    return None, next_ep
 
 
 def check_show(show, dry_run=False):
@@ -613,8 +624,8 @@ def check_show(show, dry_run=False):
     name = show["name"]
     max_ep = show["max_ep"]
     season = show["season"]
-    # TMDB 季总集数上限 (容差+5), 过滤"老九门48集"类假阳性
-    season_total = _tmdb_season_total(show["tmdb"], season)
+    # TMDB 季总集数上限 (容差+5) + next_episode_to_air, 过滤假阳性
+    season_total, next_ep = _tmdb_season_info(show["tmdb"], season)
 
     def _is_new(e):
         if e <= max_ep:
@@ -624,6 +635,12 @@ def check_show(show, dry_run=False):
         # season_total 获取失败时保守兜底: 超 max_ep+10 的集数拒绝
         # (2026-08-10: 容器内 TMDB 调用曾静默失败→None→[48]假阳性连报3天)
         if season_total is None and e > max_ep + 10:
+            return False
+        # ⚠️ 2026-08-12 无职转生 [14] 血案: TMDB 提前公布整季播出表(日漫常见"全14集"),
+        # note 里"全14集"(season total)被当"更至14" → 假阳性.
+        # next_episode_to_air 是"下一集未播", 源不可能有超过 next_ep+3 的集
+        # (+3 容差: next 字段滞后已播集 + 大结局双集同播; 已测 无职转生 14>11 拒绝/公寓黑风暴 10≤14 放行)
+        if next_ep is not None and e > next_ep + 3:
             return False
         return True
 
