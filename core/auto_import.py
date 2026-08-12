@@ -360,6 +360,52 @@ def analyze(raw):
 
 
 # ═══════════════════════════════════════════════════════════════
+#  画质标准 (2026-08-12 按当前公网网络重新制定)
+#  ══════════════════════════════════════════════════════════════
+#  公网链路实况 (2026-08-11 实测): frp 满速 5.2MB/s=41.6Mbps, 88frp
+#  限速三档: 正常 5.2MB/s → 半速 2.5MB/s(20Mbps) → 极端 20KB/s(累计
+#  流量触发≈看半小时4K)。按半速 20Mbps 留 25% 余量 → 安全码率 ≤15Mbps。
+#
+#  首选: 1080p WEB-DL (4-8Mbps) / 4K WEB-DL 低码率 (≤15Mbps) — 公网流畅
+#  禁止: 4K REMUX / 原盘 / 高码率蓝光 (>25Mbps) — 公网必卡, 仅适合本地
+# ═══════════════════════════════════════════════════════════════
+PUBLIC_SAFE_MBPS = 15      # 公网安全码率上限 (88frp 半速限速 20Mbps 留余量)
+PUBLIC_HARD_MBPS = 25      # 硬上限: 超过即视为公网不可播 (REMUX/原盘级别)
+EP_DURATION_S = 2700       # 剧集单集估算时长 45min
+MOVIE_DURATION_S = 7200    # 电影估算时长 2h
+
+def estimate_bitrate_mbps(size_bytes, ep_count, is_movie=False):
+    """估算平均码率 (Mbps): 大小×8 / 总时长秒。用于判断公网可播性"""
+    if ep_count <= 0:
+        ep_count = 1
+    duration_s = (MOVIE_DURATION_S if is_movie else EP_DURATION_S) * ep_count
+    if duration_s <= 0:
+        return 0
+    return size_bytes * 8 / duration_s / 1_000_000
+
+def quality_fits_public(qualities, size_bytes, ep_count, is_movie=False):
+    """判断当前源是否符合公网可播标准。
+    返回: (fits, reason) — fits=True 达标直接入库; False 需搜索替代"""
+    q_low = " ".join(qualities).lower()
+    # 高码率标签: REMUX/原盘/蓝光 → 公网必卡
+    has_high = ('remux' in q_low or '原盘' in q_low or 'bluray' in q_low
+                or '蓝光' in q_low or '高码率' in q_low or '高码' in q_low)
+    mbps = estimate_bitrate_mbps(size_bytes, ep_count, is_movie)
+    if has_high:
+        return False, f"含REMUX/原盘/蓝光标签(公网必卡, ~{mbps:.0f}Mbps)"
+    if mbps > PUBLIC_HARD_MBPS:
+        return False, f"码率 ~{mbps:.0f}Mbps 超过公网硬上限 {PUBLIC_HARD_MBPS}Mbps"
+    if mbps > PUBLIC_SAFE_MBPS:
+        return False, f"码率 ~{mbps:.0f}Mbps 超过安全线 {PUBLIC_SAFE_MBPS}Mbps(半速限速会卡)"
+    # 低于1080p(720p/480p)也需要升级
+    has_1080 = ('1080p' in q_low or '1080' in q_low or 'bluray' in q_low)
+    has_4k = ('4k' in q_low or '2160p' in q_low or 'uhd' in q_low or '2160' in q_low)
+    if not (has_1080 or has_4k):
+        return False, f"画质 {q_low or '?'} 低于1080p"
+    return True, f"{q_low or '?'} ~{mbps:.0f}Mbps 公网可播"
+
+
+# ═══════════════════════════════════════════════════════════════
 #  画质升级搜索
 # ═══════════════════════════════════════════════════════════════
 def search_better_quality(title, current_qualities):
@@ -407,19 +453,38 @@ print(json.dumps(results,ensure_ascii=False))
 
 
 def pick_best_upgrade(candidates, original_url, analysis, season=None):
-    """从候选链接中选最佳升级版。season 参数用于筛选匹配季度的结果"""
+    """从候选链接中选最佳升级版。season 参数用于筛选匹配季度的结果
+
+    2026-08-12 新标准 (公网可播优先): 评分不再无脑追 4K REMUX/原盘,
+    而是综合「分辨率 + 公网可播性」:
+      - 4K WEB-DL (低码率, 公网可播) > 1080p WEB-DL > 4K REMUX > 原盘
+      - REMUX/原盘/蓝光 = 高码率 → 公网必卡 → 大幅降权
+      - WEB-DL/流媒体 = 码率适中 → 公网友好 → 加分
+    """
     quark_candidates = [c for c in candidates if 'quark' in c['url']]
     if not quark_candidates: return None, None
     scored = []
     for c in quark_candidates:
         score = 0
         name_low = c['title'].lower()
-        if '4k' in name_low or '2160p' in name_low: score += 10
-        if 'hdr' in name_low: score += 8
+        # 分辨率 (0-12)
+        if '4k' in name_low or '2160p' in name_low or 'uhd' in name_low or '2160' in name_low:
+            score += 12
+        elif '1080p' in name_low:
+            score += 8
+        # HDR/DV (色彩加分)
+        if 'hdr' in name_low: score += 3
         # ⚠️ 'dv' 词边界匹配 (2026-08-11 修复): 'dvd' 标题会被误判为杜比视界+9
         #    Apple 生态: DV P5/P8 完美点亮(权重最高), HDR10+ 不支持只按 HDR10 回放(已被上方 hdr 子串覆盖+8)
-        if re.search(r'(?<![a-z])dv(?![a-z])', name_low) and 'dvd' not in name_low: score += 9
-        if 'remux' in name_low: score += 5
+        if re.search(r'(?<![a-z])dv(?![a-z])', name_low) and 'dvd' not in name_low: score += 4
+        # ═══ 公网可播性修正 (2026-08-12) ═══
+        # REMUX/原盘/蓝光 = 高码率 50-90Mbps → 公网必卡 → 大降权
+        if 'remux' in name_low: score -= 12
+        if '原盘' in c['title'] or 'bluray' in name_low or '蓝光' in c['title']: score -= 10
+        if '高码率' in c['title'] or '高码' in c['title']: score -= 6
+        # WEB-DL/流媒体/在线 = 码率适中 → 公网友好 → 加分
+        if 'web-dl' in name_low or 'webdl' in name_low or 'webrip' in name_low \
+           or '流媒体' in c['title'] or '在线' in c['title']: score += 6
         # Season boost: match specific season in title
         if season and season > 1:
             s_tag = f's{season:02d}'
@@ -847,22 +912,27 @@ if __name__ == "__main__":
             target_subdir = "剧集"  # 默认剧集，手动 --type anime 覆盖
     feishu_table = TABLE_MAP[target_subdir]
 
-    # ④ 画质检查/升级
+    # ④ 画质检查/升级 (2026-08-12 新标准: 按公网可播码率, 不再无脑追4K REMUX)
     final_sid = sid
     upgraded = False
     final_quality = q_str
 
-    if not a["has_4k"]:
-        print(f"  ⚠️ 画质 {q_str}，搜索更佳版本...")
+    is_movie = (a["media_type"] == "movie")
+    ep_count = max(len(eps), 1)
+    fits, fit_reason = quality_fits_public(a["qualities"], a["total_size"], ep_count, is_movie)
+
+    if not fits:
+        print(f"  ⚠️ 当前源不达标: {fit_reason}")
+        print(f"  🔍 搜索公网可播替代版...")
         candidates = search_better_quality(a["best_title"], a["qualities"])
         if candidates:
             quark_candidates = [c for c in candidates if 'quark' in c['url']]
-            print(f"  🎯 找到 {len(quark_candidates)} 个高画质版")
+            print(f"  🎯 找到 {len(quark_candidates)} 个候选版")
             for i, c in enumerate(quark_candidates[:5]):
                 name = c['title'][:80]
                 tags = []
                 nl = name.lower()
-                for t in ['4K','4k','HDR','DV','蓝光','REMUX','高码率','臻彩']:
+                for t in ['4K','4k','HDR','DV','蓝光','REMUX','高码率','臻彩','WEB-DL','1080p']:
                     if t.lower() in nl: tags.append(t)
                 tag_str = ' '.join(tags) if tags else '?'
                 print(f"     [{i+1}] {tag_str:16} {name}")
@@ -871,14 +941,22 @@ if __name__ == "__main__":
             if better_sid:
                 final_sid = better_sid
                 upgraded = True
-                final_quality = "4K+"
-                print(f"  💡 已选: {better_name[:60]}")
+                # 候选版画质标签 (新标准: 不一定是4K, 用名字里的实际标签)
+                nl = better_name.lower()
+                if '4k' in nl or '2160p' in nl: cand_q = "4K"
+                elif '1080p' in nl: cand_q = "1080p"
+                else: cand_q = "WEB-DL"
+                if 'hdr' in nl: cand_q += " HDR"
+                if re.search(r'(?<![a-z])dv(?![a-z])', nl) and 'dvd' not in nl: cand_q += " DV"
+                if 'web-dl' in nl or 'webdl' in nl: cand_q += " WEB-DL"
+                final_quality = cand_q
+                print(f"  💡 已选: {better_name[:60]} → {cand_q}")
             else:
-                print(f"  ℹ️ 无夸克链接，保留原画质")
+                print(f"  ℹ️ 无可用替代, 保留原源入库 (超公网标准, 公网可能卡顿)")
         else:
-            print(f"  ℹ️ 未找到4K版，保留原画质")
+            print(f"  ℹ️ 未找到替代版, 保留原源入库 (超公网标准, 公网可能卡顿)")
     else:
-        print(f"  ✅ 画质足够 ({q_str})")
+        print(f"  ✅ 画质达标: {fit_reason}")
 
     # ⑤ 入库
     print(f"  📥 入库中 (→ {target_subdir}, S{args.season:02d}, clean={args.clean})...")
