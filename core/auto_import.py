@@ -693,13 +693,13 @@ renamed=0;deleted_dup=0
 for x in items:
     if x.get('dir') or (\"tmdbid="+TMDB) in x.get('file_name',''):continue
     old=x['file_name'];fid=x['fid'];ep=None;s=SE
-    em=re.search(r\"[Ss](\d{{1,2}})\s*[Ee](\d{{1,3}})\",old)
+    em=re.search(r\"[Ss](\\d{{1,2}})\\s*[Ee](\\d{{1,3}})\",old)
     if em:s=int(em.group(1));ep=int(em.group(2))
     else:
-        em=re.search(r\"[Ee](\d{{1,3}})\",old)
+        em=re.search(r\"[Ee](\\d{{1,3}})\",old)
         if em:ep=int(em.group(1))
         else:
-            em=re.search(r\"(\d{{2,3}})\\.\w+$\",old)
+            em=re.search(r\"(\\d{{2,3}})\\.\\w+$\",old)
             if em:ep=int(em.group(1))
     if ep is None:
         ext=old.rsplit('.',1)[-1] if '.' in old else 'mp4'
