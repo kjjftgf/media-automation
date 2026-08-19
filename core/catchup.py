@@ -690,9 +690,10 @@ def check_show(show, dry_run=False):
                 print(f"  ❌ {name}: {e}")
                 return {"show": show, "best": best, "imported": False, "error": str(e)}
 
-        # xiaokupan 有结果但无新集 → 明确无更新, 不进入 CloudSaver 处理循环
-        # (xiaokupan dict 无 'title' 键, 掉进下方 for 循环会 KeyError)
-        return None
+        # xiaokupan 有结果但无新集 → 不直接放弃, 继续查 PanSou (2026-08-19 修复:
+        # xiaokupan 结果常滞后/被容器DNS网络抖动截断, 直接 return 会漏掉 PanSou 的新源,
+        # 实例: 杀手妈咪 E6 / 毛骨悚然的恋爱 E10 漏报)
+        cloud_results = search_pansou(name, season, max_ep)
 
     # xiaokupan无结果 → PanSou → CloudSaver
     if not cloud_results:
