@@ -790,7 +790,7 @@ def feishu_sync(name, tmdb, ep_str, status, size_gb, fc, quality, year, genres, 
         name, str(tmdb), ep_str, status,
         str(size_gb), str(fc), str(quality), str(year or ""),
     ] + (genres if genres else [])
-    r = subprocess.run(args, capture_output=True, text=True, timeout=15)
+    r = subprocess.run(args, capture_output=True, text=True, timeout=40)
     print(r.stdout.strip())
     return r.returncode == 0
 
@@ -809,6 +809,7 @@ if __name__ == "__main__":
     p.add_argument("--clean", action="store_true", default=True, help="删除旧目录重建 (默认)")
     p.add_argument("--no-clean", dest="clean", action="store_false", help="保留已有文件追加")
     p.add_argument("--password", type=str, default="", help="分享密码 (如有)")
+    p.add_argument("--tmdb", type=str, default="", help="手动指定 TMDB ID (绕过自动匹配, 同名歧义时用)")
     args = p.parse_args()
 
     url = args.url
@@ -864,15 +865,39 @@ if __name__ == "__main__":
     print(f"  🔍 TMDB搜索: {a['best_title']}...")
     results = tmdb_search(a["best_title"])
 
-    if not results:
+    if not results and not args.tmdb:
         alt = a["best_title"].lower().replace("completed","").replace("web-dl","").strip().rstrip("._- ")
         results = tmdb_search(alt)
 
-    if not results:
+    if not results and not args.tmdb:
         print("  ❌ TMDB无匹配，跳过"); sys.exit(1)
 
-    selected = select_best_tmdb(results, a)
-    if not selected: selected = results[0]
+    selected = select_best_tmdb(results, a) if results else None
+    if not selected and results: selected = results[0]
+
+    # ②.4 手动指定 TMDB (2026-08-20 新增: 同名歧义/混淆目录名时 --tmdb 直接指定)
+    if args.tmdb:
+        override = next((r for r in results if str(r.get("id")) == args.tmdb), None) if results else None
+        if override:
+            selected = override
+            print(f"  [--tmdb] 手动指定: {override.get('name','')} (tmdb={args.tmdb})")
+        else:
+            # 结果里没有(或 results 空) → 直接查 TMDB 详情拿名称
+            try:
+                import urllib.request as _ur
+                _u = f"https://api.themoviedb.org/3/movie/{args.tmdb}?api_key=a8ae73e2f1d4b4de5f47316cb095bad1&language=zh-CN"
+                _info = json.loads(_ur.urlopen(_u, timeout=20).read())
+                selected = {"id": args.tmdb, "name": _info.get("title") or _info.get("name") or f"tmdb-{args.tmdb}",
+                            "type": "movie", "year": (_info.get("release_date") or "")[:4]}
+                print(f"  [--tmdb] 手动指定: {selected['name']} (tmdb={args.tmdb})")
+            except Exception as e:
+                print(f"  ⚠️ --tmdb 详情获取失败: {e}, 使用自动匹配结果")
+        # 用指定名称重新搜索补充 results (供 ②.5 交叉验证使用)
+        if results is None: results = []
+        results = [r for r in results] + ([selected] if not any(str(r.get("id")) == args.tmdb for r in results) else [])
+
+    if selected is None:
+        print("  ❌ 无可用 TMDB 匹配，跳过"); sys.exit(1)
 
     for i, r in enumerate(results):
         mark = "←" if r == selected else " "
@@ -983,7 +1008,11 @@ if __name__ == "__main__":
                 final_quality = f"{final_quality} ({detected_q})"
 
         # ⑥ 飞书同步
-        status = "🔄追更中" if (len(eps) < 20) else "✅已入库"
+        # ⚠️ 电影无集数概念, 状态固定"✅已入库"; 剧集按集数判断 (2026-08-20 修复: 旧逻辑 len(eps)<20 对电影恒真 → 全写成追更中)
+        if target_subdir == "电影":
+            status = "✅已入库"
+        else:
+            status = "🔄追更中" if (len(eps) < 20) else "✅已入库"
         year = selected.get("year", "")
         genres = []
 
