@@ -31,9 +31,17 @@ FIELD_MAP = {
     "movie": (FIELDS_MOVIE, FIELDS_MOVIE_ID),
 }
 
-# 选项映射（三表共用相同 option ID）
-STATUS_OPTIONS = {"✅已入库":"optSXYaSMr","🔄追更中":"optVZqcuvs","⭐想看":"optpYOarwN"}
-GENRE_OPTIONS = {"动画":"opt144275708","动作冒险":"opt1201370868","剧情":"opt144268455","悬疑":"opt144387022","喜剧":"opt144290228","犯罪":"opt144532484","科幻":"opt144580659","爱情":"opt144520733","动作":"opt144266013"}
+# ⚠️ 选项映射（2026-08-20 修复: 三表 option ID 各不相同, 之前硬编码 tv 表 ID 导致 movie/anime 表写入时飞书自动创建垃圾选项）
+STATUS_OPTIONS = {
+    "tv":    {"✅已入库": "optSXYaSMr", "🔄追更中": "optVZqcuvs", "⭐想看": "optpYOarwN"},
+    "anime": {"✅已入库": "optkQO8Ads", "🔄追更中": "optjAvUVGO", "⭐想看": "optbapvZYx"},
+    "movie": {"✅已入库": "opt3zCuokE", "🔄追更中": "optHSJi1Hj", "⭐想看": "optCbNou0u"},
+}
+GENRE_OPTIONS = {
+    "tv":    {"动画": "opt144275708", "动作冒险": "opt1201370868", "剧情": "opt144268455", "悬疑": "opt144387022", "喜剧": "opt144290228", "犯罪": "opt144532484", "科幻": "opt144580659", "爱情": "opt144520733", "动作": "opt144266013", "综艺": "optlIG6Gtm"},
+    "anime": {"动画": "opt144275708", "动作冒险": "opt1201370868", "剧情": "opt144268455", "悬疑": "optB60Mwft", "喜剧": "opteTVIZes", "犯罪": "optuu7vDy8", "科幻": "optJ5A26XY", "爱情": "optmx9frlv", "动作": "optq7joOsX", "恐怖": "optmE7m5tN", "惊悚": "opte7ZXdKP"},
+    "movie": {"动画": "optSHeBSKb", "动作冒险": "optXl0WFB3", "剧情": "opt5VQu9e8", "悬疑": "opt144387022", "喜剧": "optfyg1Rb4", "犯罪": "opttjm6qmM", "科幻": "opt144580659", "爱情": "optMMRmTwc", "动作": "optf3mppg8", "恐怖": "opt144378671", "惊悚": "opt144382585", "冒险": "opt144275584", "历史": "opt144274069"},
+}
 
 def get_token():
     data = json.dumps({"app_id": FEISHU_APP_ID, "app_secret": FEISHU_APP_SECRET}).encode()
@@ -50,10 +58,10 @@ def sync_record(token, fields, table="tv", record_id=None):
         if value is None or value == "":
             continue
         display_key = names.get(key, key)
-        if key == "status" and value in STATUS_OPTIONS:
-            feishu_fields[display_key] = STATUS_OPTIONS[value]
+        if key == "status" and value in STATUS_OPTIONS.get(table, {}):
+            feishu_fields[display_key] = STATUS_OPTIONS[table][value]
         elif key == "genre" and isinstance(value, list):
-            feishu_fields[display_key] = [GENRE_OPTIONS.get(v, v) for v in value if v in GENRE_OPTIONS]
+            feishu_fields[display_key] = [GENRE_OPTIONS.get(table, {}).get(v, v) for v in value if v in GENRE_OPTIONS.get(table, {})]
         elif isinstance(value, list):
             feishu_fields[display_key] = value
         else:
