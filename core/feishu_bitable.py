@@ -58,10 +58,14 @@ def sync_record(token, fields, table="tv", record_id=None):
         if value is None or value == "":
             continue
         display_key = names.get(key, key)
-        if key == "status" and value in STATUS_OPTIONS.get(table, {}):
-            feishu_fields[display_key] = STATUS_OPTIONS[table][value]
+        # ⚠️ 2026-08-22 血案修复: 写记录值必须传【选项名称】, 绝不能传 option ID!
+        # 之前 (2026-08-20 按表映射修复时) 把名称转成 ID 写入 → 飞书把 ID 当文本创建垃圾选项
+        # (如 movie 表出现名为 opt3zCuokE 的垃圾项, 记录状态显示 optXXX 乱码)
+        # STATUS_OPTIONS/GENRE_OPTIONS 只用于字段 options 的 PUT 清理, 不用于写记录值
+        if key == "status":
+            feishu_fields[display_key] = value
         elif key == "genre" and isinstance(value, list):
-            feishu_fields[display_key] = [GENRE_OPTIONS.get(table, {}).get(v, v) for v in value if v in GENRE_OPTIONS.get(table, {})]
+            feishu_fields[display_key] = value
         elif isinstance(value, list):
             feishu_fields[display_key] = value
         else:
