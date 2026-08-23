@@ -218,7 +218,7 @@ def is_suspicious_tmdb_match(name):
 # ═══════════════════════════════════════════════════════════════
 def list_share(share_id):
     """列出夸克分享链接的全部文件/目录树, 返回 D|... / F|... 行"""
-    m = re.search(r'/s/([a-f0-9]+)', share_id)
+    m = re.search(r'/s/([a-zA-Z0-9]+)', share_id)
     sid_raw = m.group(1) if m else share_id
 
     anchor_dir = ""
@@ -452,7 +452,7 @@ print(json.dumps(results,ensure_ascii=False))
     except: return []
 
 
-def pick_best_upgrade(candidates, original_url, analysis, season=None):
+def pick_best_upgrade(candidates, original_url, analysis, season=None, tmdb_name=""):
     """从候选链接中选最佳升级版。season 参数用于筛选匹配季度的结果
 
     2026-08-12 新标准 (公网可播优先): 评分不再无脑追 4K REMUX/原盘,
@@ -460,9 +460,33 @@ def pick_best_upgrade(candidates, original_url, analysis, season=None):
       - 4K WEB-DL (低码率, 公网可播) > 1080p WEB-DL > 4K REMUX > 原盘
       - REMUX/原盘/蓝光 = 高码率 → 公网必卡 → 大幅降权
       - WEB-DL/流媒体 = 码率适中 → 公网友好 → 加分
+
+    ⚠️ 2026-08-23 修复 (天空→邻人可疑血案): 候选必须与目标同名!
+    之前只按画质标签评分, 搜索"天空"时选中完全无关的"邻人可疑 4K HDR"
+    导致把无关电影的"中集/下集"标题党视频全转存入库。
     """
     quark_candidates = [c for c in candidates if 'quark' in c['url']]
     if not quark_candidates: return None, None
+    # 名称相关性过滤: 候选标题必须包含目标片名 (或高度相似), 否则直接排除
+    # 短标题(2-3字)用子串包含最可靠, 长标题用 SequenceMatcher
+    import difflib
+    def name_related(c_title):
+        if not tmdb_name:
+            return True  # 无基准名时不做过滤 (兼容旧调用)
+        t = tmdb_name.strip().lower()
+        ct = c_title.strip().lower()
+        if len(t) >= 2 and t in ct:
+            return True
+        if len(t) >= 4:
+            # 长片名: 任一 2+ 字片段出现即可 (防"天空之城"匹配"天空"类误判, 需完整名)
+            ratio = difflib.SequenceMatcher(None, t, ct).ratio()
+            if ratio >= 0.45:
+                return True
+        return False
+    quark_candidates = [c for c in quark_candidates if name_related(c.get('title', ''))]
+    if not quark_candidates:
+        print(f"  ⚠️ 候选均与目标 '{tmdb_name}' 名称不相关, 放弃升级")
+        return None, None
     scored = []
     for c in quark_candidates:
         score = 0
@@ -494,7 +518,7 @@ def pick_best_upgrade(candidates, original_url, analysis, season=None):
     scored.sort(key=lambda x: -x[0])
     if scored and scored[0][0] > 0:
         best = scored[0][1]
-        m = re.search(r'/s/([a-f0-9]+)', best['url'])
+        m = re.search(r'/s/([a-zA-Z0-9]+)', best['url'])
         return (m.group(1) if m else None), best['title']
     return None, None
 
@@ -519,7 +543,7 @@ def do_import(share_id, tmdb_id, show_name, target_subdir="动漫", season=1, cl
     返回: "IMPORTED|ep_count|size_gb|detected_quality|file_count"
     """
     sid = share_id
-    m = re.search(r'/s/([a-f0-9]+)', share_id)
+    m = re.search(r'/s/([a-zA-Z0-9]+)', share_id)
     if m: sid = m.group(1)
 
     parent_fid = DIR_FIDS.get(target_subdir, DIR_FIDS["动漫"])
@@ -629,43 +653,50 @@ fids=[x['fid'] for x in vids]
 tokens=[x.get('share_fid_token','') for x in vids]
 
 # 原生 POST 保存 (不用 adapter.save_file — 它 pdir_fid 硬编码 "0")
-save_body={{'fid_list':fids,'fid_token_list':tokens,'to_pdir_fid':TF,'pwd_id':SHARE,'stoken':stok,'pdir_fid':rf,'scene':'link'}}
-if PWD: save_body['pwd']=PWD
-r=requests.post(BASE+"/1/clouddrive/share/sharepage/save",
-    params={{'pr':'ucpro','fr':'pc','app':'clouddrive'}},
-    json=save_body,headers=h,timeout=60)
-d=r.json()
-if d.get('code')!=0:
-    # 41013/41020 = token expired → retry once with fresh stoken
-    if d.get('code') in (41013, 41020):
-        time.sleep(2)
-        stok2=adapter.get_stoken(SHARE)['data']['stoken']
-        save_body['stoken']=stok2
-        refresh_body={{'fid_list':fids,'fid_token_list':tokens,'to_pdir_fid':TF,'pwd_id':SHARE,'stoken':stok2,'pdir_fid':rf,'scene':'link'}}
-        if PWD: refresh_body['pwd']=PWD
-        r=requests.post(BASE+\"/1/clouddrive/share/sharepage/save\",
-            params={{'pr':'ucpro','fr':'pc','app':'clouddrive'}},
-            json=refresh_body,headers=h,timeout=60)
-        d=r.json()
-        if d.get('code')!=0:
-            print(\"SAVE_FAIL code=\"+str(d.get('code'))+\" \"+str(d.get('message',''))[:60])
+# ⚠️ 2026-08-24 学习: 单次转存 task 返回上限 100 文件 (save_as_top_fids 最多 100), 超限分片保存
+BATCH=100
+saved=0
+for bi in range(0,len(fids),BATCH):
+    bfids=fids[bi:bi+BATCH]
+    btokens=tokens[bi:bi+BATCH]
+    save_body={{'fid_list':bfids,'fid_token_list':btokens,'to_pdir_fid':TF,'pwd_id':SHARE,'stoken':stok,'pdir_fid':rf,'scene':'link'}}
+    if PWD: save_body['pwd']=PWD
+    r=requests.post(BASE+"/1/clouddrive/share/sharepage/save",
+        params={{'pr':'ucpro','fr':'pc','app':'clouddrive'}},
+        json=save_body,headers=h,timeout=60)
+    d=r.json()
+    if d.get('code')!=0:
+        # 41013/41020 = token expired → retry once with fresh stoken
+        if d.get('code') in (41013, 41020):
+            time.sleep(2)
+            stok2=adapter.get_stoken(SHARE)['data']['stoken']
+            save_body['stoken']=stok2
+            refresh_body={{'fid_list':bfids,'fid_token_list':btokens,'to_pdir_fid':TF,'pwd_id':SHARE,'stoken':stok2,'pdir_fid':rf,'scene':'link'}}
+            if PWD: refresh_body['pwd']=PWD
+            r=requests.post(BASE+"/1/clouddrive/share/sharepage/save",
+                params={{'pr':'ucpro','fr':'pc','app':'clouddrive'}},
+                json=refresh_body,headers=h,timeout=60)
+            d=r.json()
+            if d.get('code')!=0:
+                print("SAVE_FAIL code="+str(d.get('code'))+" "+str(d.get('message',''))[:60])
+                sys.exit(1)
+        else:
+            print("SAVE_FAIL code="+str(d.get('code'))+" "+str(d.get('message',''))[:60])
             sys.exit(1)
+    # ── Task 验证实际保存数量 (不信任 file/sort!) ──
+    task_id=(d.get('data',{{}}) or {{}}).get('task_id','')
+    if task_id:
+        for _ in range(20):
+            time.sleep(3)
+            r2=requests.get(BASE+"/1/clouddrive/task",
+                params={{'pr':'ucpro','fr':'pc','task_id':task_id,'retry_index':'0'}},headers=h,timeout=15)
+            td=r2.json()
+            if (td.get('data',{{}}) or {{}}).get('status')==2:
+                saved+=len((td.get('data',{{}}) or {{}}).get('save_as',{{}}).get('save_as_top_fids',[]))
+                break
     else:
-        print(\"SAVE_FAIL code=\"+str(d.get('code'))+\" \"+str(d.get('message',''))[:60])
-        sys.exit(1)
-
-# ── Step 3: Task 验证实际保存数量 (不信任 file/sort!) ──
-task_id=(d.get('data',{{}}) or {{}}).get('task_id','')
-saved=len(fids)
-if task_id:
-    for _ in range(20):
-        time.sleep(3)
-        r2=requests.get(BASE+"/1/clouddrive/task",
-            params={{'pr':'ucpro','fr':'pc','task_id':task_id,'retry_index':'0'}},headers=h,timeout=15)
-        td=r2.json()
-        if (td.get('data',{{}}) or {{}}).get('status')==2:
-            saved=len((td.get('data',{{}}) or {{}}).get('save_as',{{}}).get('save_as_top_fids',[]))
-            break
+        saved+=len(bfids)
+    time.sleep(2)
 time.sleep(10)
 
 # ── Step 4: 重命名 + 去重 — 只处理当前季文件! ──
@@ -810,10 +841,11 @@ if __name__ == "__main__":
     p.add_argument("--no-clean", dest="clean", action="store_false", help="保留已有文件追加")
     p.add_argument("--password", type=str, default="", help="分享密码 (如有)")
     p.add_argument("--tmdb", type=str, default="", help="手动指定 TMDB ID (绕过自动匹配, 同名歧义时用)")
+    p.add_argument("--no-upgrade", action="store_true", default=False, help="跳过画质自动升级, 直接用原源入库 (2026-08-23 新增)")
     args = p.parse_args()
 
     url = args.url
-    m = re.search(r'/s/([a-f0-9]+)', url)
+    m = re.search(r'/s/([a-zA-Z0-9]+)', url)
     sid = m.group(1) if m else url
 
     # 解析 anchor (分享内子目录锚点 #/list/share/xxx)
@@ -883,13 +915,26 @@ if __name__ == "__main__":
             print(f"  [--tmdb] 手动指定: {override.get('name','')} (tmdb={args.tmdb})")
         else:
             # 结果里没有(或 results 空) → 直接查 TMDB 详情拿名称
+            # ⚠️ 2026-08-24 修复: 原来写死 /3/movie/ 端点, TV 剧(茶啊二中119059)返回404
+            # → 按 args.type 选端点, 未指定则 tv 优先再 movie
             try:
                 import urllib.request as _ur
-                _u = f"https://api.themoviedb.org/3/movie/{args.tmdb}?api_key=a8ae73e2f1d4b4de5f47316cb095bad1&language=zh-CN"
-                _info = json.loads(_ur.urlopen(_u, timeout=20).read())
-                selected = {"id": args.tmdb, "name": _info.get("title") or _info.get("name") or f"tmdb-{args.tmdb}",
-                            "type": "movie", "year": (_info.get("release_date") or "")[:4]}
-                print(f"  [--tmdb] 手动指定: {selected['name']} (tmdb={args.tmdb})")
+                _info = None
+                _order = ["tv", "movie"] if args.type in ("tv", "anime", "动漫", "剧集") else (["movie", "tv"] if args.type == "movie" else ["tv", "movie"])
+                for _mt in _order:
+                    try:
+                        _u = f"https://api.themoviedb.org/3/{_mt}/{args.tmdb}?api_key=a8ae73e2f1d4b4de5f47316cb095bad1&language=zh-CN"
+                        _resp = json.loads(_ur.urlopen(_u, timeout=20).read())
+                        if _resp.get("id"):
+                            _info = _resp
+                            break
+                    except Exception:
+                        continue
+                if not _info:
+                    raise Exception(f"tv/movie 均无 {args.tmdb}")
+                selected = {"id": args.tmdb, "name": _info.get("name") or _info.get("title") or f"tmdb-{args.tmdb}",
+                            "type": _mt, "year": (_info.get("first_air_date") or _info.get("release_date") or "")[:4]}
+                print(f"  [--tmdb] 手动指定: {selected['name']} (tmdb={args.tmdb}, type={_mt})")
             except Exception as e:
                 print(f"  ⚠️ --tmdb 详情获取失败: {e}, 使用自动匹配结果")
         # 用指定名称重新搜索补充 results (供 ②.5 交叉验证使用)
@@ -946,7 +991,7 @@ if __name__ == "__main__":
     ep_count = max(len(eps), 1)
     fits, fit_reason = quality_fits_public(a["qualities"], a["total_size"], ep_count, is_movie)
 
-    if not fits:
+    if not fits and not args.no_upgrade:
         print(f"  ⚠️ 当前源不达标: {fit_reason}")
         print(f"  🔍 搜索公网可播替代版...")
         candidates = search_better_quality(a["best_title"], a["qualities"])
@@ -962,7 +1007,7 @@ if __name__ == "__main__":
                 tag_str = ' '.join(tags) if tags else '?'
                 print(f"     [{i+1}] {tag_str:16} {name}")
 
-            better_sid, better_name = pick_best_upgrade(candidates, url, a, args.season)
+            better_sid, better_name = pick_best_upgrade(candidates, url, a, args.season, tmdb_name=tmdb_name)
             if better_sid:
                 final_sid = better_sid
                 upgraded = True
