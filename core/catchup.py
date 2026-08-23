@@ -149,7 +149,7 @@ def _parse_raw_results(html):
         return []
     # JavaScript object format:
     # {url:"https://pan.quark.cn/s/XXX",password:"...",note:"TITLE",datetime:"DATE",source:"SRC"}
-    pattern = r'\{url:"(https://pan\.quark\.cn/s/[a-f0-9]+)",password:"[^"]*",note:"([^"]*)",datetime:"([^"]*)",source:"([^"]*)"'
+    pattern = r'\{url:"(https://pan\.quark\.cn/s/[a-zA-Z0-9]+)",password:"[^"]*",note:"([^"]*)",datetime:"([^"]*)",source:"([^"]*)"'
     matches = re.findall(pattern, html)
     results = []
     for link, note, dt, src in matches:
