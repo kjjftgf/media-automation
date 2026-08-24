@@ -424,7 +424,7 @@ def search_cloudsaver(title, season=None):
     """搜索 CloudSaver 找新分享链接 (API v2: data[0].list)"""
     try:
         conn = http.client.HTTPConnection("127.0.0.1", 8008, timeout=15)
-        body = json.dumps({"username": "admin", "password": os.environ.get("CLOUDSAVER_ADMIN_CODE", "")}).encode()
+        body = json.dumps({"username": "admin", "password": "230713"}).encode()
         conn.request("POST", "/api/user/login", body=body,
                      headers={"Content-Type": "application/json"})
         resp = conn.getresponse()
