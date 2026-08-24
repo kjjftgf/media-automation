@@ -9,7 +9,7 @@ ctx.verify_mode = ssl.CERT_NONE
 APP_ID = os.environ.get("FEISHU_APP_ID", "")
 APP_SECRET = os.environ.get("FEISHU_APP_SECRET", "")
 BITABLE = os.environ.get("BITABLE_APP_TOKEN", "")
-TABLE_TV = os.environ.get("FEISHU_TABLE_TV", "")
+TABLE_TV = "tblCQbsK6FBkGIY9"
 RECORD_ID = os.environ.get("FEISHU_RECORD_ID", "")
 
 # Get token
