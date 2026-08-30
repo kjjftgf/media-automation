@@ -38,7 +38,7 @@ jobs:
           set -e
           # 防止真实凭据被提交: 匹配凭据的通用形态, 而非真实值(真实值不应出现在仓库任何位置)
           # 匹配: 飞书 App ID (cli_ + 16位) / 长密钥(32+位) / 疑似 token 的赋值
-          if grep -rnE "cli_[a-zA-Z0-9]{16}|(APP_SECRET|app_secret|FEISHU_APP_SECRET)\s*=\s*\"[^\"]{16,}\"|(BITABLE_APP_TOKEN|app_token)\s*=\s*\"[^\"]{20,}\"" . --include="*.py" --include="*.md" --include="*.txt" --include="*.example" 2>/dev/null; then
+          if grep -rnE "cli_[a-zA-Z0-9]{16}|(APP_SECRET|app_secret|FEISHU_APP_SECRET)\s*=\s*\"[^\"]{16,}\"|(BITABLE_APP_TOKEN|app_token)\s*=\s*\"[^\"]{20,}\"|api_key=[a-zA-Z0-9]{10,}|password[\"']?\s*[:=]\s*[\"']?[a-zA-Z0-9]{4,}" . --include="*.py" --include="*.md" --include="*.txt" --include="*.example" 2>/dev/null; then
             echo "❌ 检测到疑似敏感信息, 请检查!"; exit 1
           fi
           echo "✅ 无敏感信息"
