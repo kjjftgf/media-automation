@@ -38,7 +38,7 @@ def docker_exec(container, cmd):
         # 尝试解析 JSON 错误信息
         try:
             err = json.loads(raw.decode('utf-8', errors='replace'))
-            return f"ERR start ({status}): {err.get('message', raw.decode(errors='replace'))}"
+            return f"ERR start ({status}): {err.get('message', raw.decode('utf-8', errors='replace'))}"
         except Exception:
             return f"ERR start ({status}): {raw.decode('utf-8', errors='replace')[:200]}"
 

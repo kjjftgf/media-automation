@@ -130,17 +130,21 @@ def _num_to_cn(n):
 def _fetch_xiaokupan(query):
     """底层HTTP请求: 搜索 xiaokupan.com，返回原始HTML"""
     try:
-        import ssl
-        ctx = ssl.create_default_context()
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
         q = urllib.parse.quote(query)
         url = f"https://xiaokupan.com/s/{q}"
         req = urllib.request.Request(url, headers={
             "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) Chrome/120.0.0.0"})
-        return urllib.request.urlopen(req, context=ctx, timeout=15).read().decode('utf-8', errors='ignore')
+        return urllib.request.urlopen(req, timeout=15).read().decode('utf-8', errors='ignore')
     except Exception:
-        return ""
+        # 降级: 证书/DNS 异常时关闭校验兜底 (仅此降级路径)
+        try:
+            import ssl
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            return urllib.request.urlopen(req, context=ctx, timeout=15).read().decode('utf-8', errors='ignore')
+        except Exception:
+            return ""
 
 
 def _parse_raw_results(html):
@@ -424,7 +428,7 @@ def search_cloudsaver(title, season=None):
     """搜索 CloudSaver 找新分享链接 (API v2: data[0].list)"""
     try:
         conn = http.client.HTTPConnection("127.0.0.1", 8008, timeout=15)
-        body = json.dumps({"username": "admin", "password": "230713"}).encode()
+        body = json.dumps({"username": "admin", "password": os.environ.get("CLOUDSAVER_ADMIN_CODE", "")}).encode()
         conn.request("POST", "/api/user/login", body=body,
                      headers={"Content-Type": "application/json"})
         resp = conn.getresponse()
@@ -519,16 +523,13 @@ def search_pansou(title, season=None, max_ep=0):
     返回格式兼容 xiaokupan: [{url, note, datetime, source, score, episodes[], season}]
     """
     try:
-        import ssl, time
-        ctx = ssl.create_default_context()
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
+        import time
 
         q = urllib.parse.quote(title)
         url = f"{PANSOU_BASE}/api/search?kw={q}&res=all"
         req = urllib.request.Request(url, headers={
             "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) Chrome/120.0.0.0"})
-        resp = urllib.request.urlopen(req, context=ctx, timeout=30)
+        resp = urllib.request.urlopen(req, timeout=30)
         d = json.loads(resp.read())
 
         if d.get("code") != 0:
@@ -597,13 +598,10 @@ def _tmdb_season_info(tmdb_id, season):
     # ⚠️ urllib 与 requests 都曾间歇失败 (DNS 污染时好时坏) — 双通道重试 (2026-08-10 加固)
     d = None
     try:
-        import ssl
-        ctx = ssl.create_default_context()
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
         req = urllib.request.Request(url)
-        d = json.loads(urllib.request.urlopen(req, context=ctx, timeout=15).read())
+        d = json.loads(urllib.request.urlopen(req, timeout=15).read())
     except Exception:
+        # 降级: DNS 污染时证书不匹配, 关闭校验兜底 (仅此降级路径)
         try:
             import requests
             d = requests.get(url, timeout=15, verify=False).json()
