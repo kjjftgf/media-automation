@@ -130,21 +130,17 @@ def _num_to_cn(n):
 def _fetch_xiaokupan(query):
     """底层HTTP请求: 搜索 xiaokupan.com，返回原始HTML"""
     try:
+        import ssl
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
         q = urllib.parse.quote(query)
         url = f"https://xiaokupan.com/s/{q}"
         req = urllib.request.Request(url, headers={
             "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) Chrome/120.0.0.0"})
-        return urllib.request.urlopen(req, timeout=15).read().decode('utf-8', errors='ignore')
+        return urllib.request.urlopen(req, context=ctx, timeout=15).read().decode('utf-8', errors='ignore')
     except Exception:
-        # 降级: 证书/DNS 异常时关闭校验兜底 (仅此降级路径)
-        try:
-            import ssl
-            ctx = ssl.create_default_context()
-            ctx.check_hostname = False
-            ctx.verify_mode = ssl.CERT_NONE
-            return urllib.request.urlopen(req, context=ctx, timeout=15).read().decode('utf-8', errors='ignore')
-        except Exception:
-            return ""
+        return ""
 
 
 def _parse_raw_results(html):
@@ -523,14 +519,19 @@ def search_pansou(title, season=None, max_ep=0):
     返回格式兼容 xiaokupan: [{url, note, datetime, source, score, episodes[], season}]
     """
     try:
-        import time
+        import ssl, time
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
 
         q = urllib.parse.quote(title)
         url = f"{PANSOU_BASE}/api/search?kw={q}&res=all"
         req = urllib.request.Request(url, headers={
             "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) Chrome/120.0.0.0"})
-        resp = urllib.request.urlopen(req, timeout=30)
-        d = json.loads(resp.read())
+        resp = urllib.request.urlopen(req, context=ctx, timeout=30)
+        # ⚠️ 2026-09-19: PanSou 新版（+20 插件）个别插件的 note 含截断的多字节字符 →
+        # 严格 utf-8 解码会抛 UnicodeDecodeError 让整个搜索失败。errors="replace" 容错。
+        d = json.loads(resp.read().decode("utf-8", "replace"))
 
         if d.get("code") != 0:
             return []
@@ -598,10 +599,13 @@ def _tmdb_season_info(tmdb_id, season):
     # ⚠️ urllib 与 requests 都曾间歇失败 (DNS 污染时好时坏) — 双通道重试 (2026-08-10 加固)
     d = None
     try:
+        import ssl
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
         req = urllib.request.Request(url)
-        d = json.loads(urllib.request.urlopen(req, timeout=15).read())
+        d = json.loads(urllib.request.urlopen(req, context=ctx, timeout=15).read())
     except Exception:
-        # 降级: DNS 污染时证书不匹配, 关闭校验兜底 (仅此降级路径)
         try:
             import requests
             d = requests.get(url, timeout=15, verify=False).json()
