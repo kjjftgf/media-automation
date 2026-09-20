@@ -733,7 +733,7 @@ for x in items:
             em=re.search(r\"(\\d{{2,3}})\\.\\w+$\",old)
             if em:ep=int(em.group(1))
             else:
-                em=re.search(r\"^(\\d{{1,2}})\\s\",old)  # 裸数字+空格: "01 4K.mkv"
+                em=re.search(r\"^(\\d{{1,3}})\\s\",old)  # 裸数字+空格: "01 4K.mkv" | "101 4K.mkv"(3位集数)
                 if em:ep=int(em.group(1))
     if ep is None:
         ext=old.rsplit('.',1)[-1] if '.' in old else 'mp4'
