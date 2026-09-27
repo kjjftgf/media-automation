@@ -511,7 +511,7 @@ def parse_episodes_from_text(text):
 
 
 # ── PanSou 搜索 ─────────────────────────────────────────────────
-PANSOU_BASE = "http://127.0.0.1"
+PANSOU_BASE = "http://127.0.0.1:8888"
 
 def search_pansou(title, season=None, max_ep=0):
     """搜索本地 PanSou 容器 (ghcr.io/fish2018/pansou, 61 plugins, 101 channels)

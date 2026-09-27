@@ -139,7 +139,7 @@ def searxng_search(query, max_results=10):
     q = urllib.parse.quote(query)
     try:
         req = urllib.request.Request(
-            f"http://127.0.0.1/search?q={q}&format=json&language=zh-CN",
+            f"http://127.0.0.1:8080/search?q={q}&format=json&language=zh-CN",
             headers={"User-Agent": "Mozilla/5.0"})
         data = json.loads(urllib.request.urlopen(req, timeout=10).read())
         return data.get("results", [])[:max_results]
@@ -415,11 +415,11 @@ def search_better_quality(title, current_qualities):
 results=[]
 title={safe_title}
 try:
-    token_r=requests.post("http://127.0.0.1/api/user/login",
+    token_r=requests.post("http://127.0.0.1:8008/api/user/login",
         json={{'username':'admin','password': os.environ.get('CLOUDSAVER_ADMIN_CODE', '')}},timeout=10)
     tok=token_r.json().get('data',{{}}).get('token','')
     if tok:
-        r=requests.get(f\"http://127.0.0.1/api/search?q={{urllib.parse.quote(title)}}&page=1&pageSize=5\",
+        r=requests.get(f\"http://127.0.0.1:8008/api/search?q={{urllib.parse.quote(title)}}&page=1&pageSize=5\",
             headers={{'Authorization':f'Bearer {{tok}}'}},timeout=15)
         raw=r.json().get('data',[])
         items=[]
@@ -435,7 +435,7 @@ try:
                 if 'pan.quark.cn' in link:results.append({{'title':item.get('title',title),'url':link,'source':'cloudsaver'}})
 except Exception as e1:sys.stderr.write("CS_ERR:"+str(e1)[:60]+"\\n")
 try:
-    req=urllib.request.Request(f"http://127.0.0.1/api/search?kw={{urllib.parse.quote(title)}}&res=all",
+    req=urllib.request.Request(f"http://127.0.0.1:8888/api/search?kw={{urllib.parse.quote(title)}}&res=all",
         headers={{"User-Agent":"Mozilla/5.0"}})
     pd=json.loads(urllib.request.urlopen(req,timeout=15).read())
     if pd.get("code")==0:
