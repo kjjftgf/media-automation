@@ -372,25 +372,33 @@ def analyze(raw):
 PUBLIC_SAFE_MBPS = 15      # 公网安全码率上限 (88frp 半速限速 20Mbps 留余量)
 PUBLIC_HARD_MBPS = 25      # 硬上限: 超过即视为公网不可播 (REMUX/原盘级别)
 EP_DURATION_S = 2700       # 剧集单集估算时长 45min
+ANIME_DURATION_S = 1440    # 动漫单集估算时长 24min (2026-10-20 实测: 动漫实际 20-28min/集,
+                           #   沿用 45min 会把码率低估约 1.8 倍 -> 高码率 4K 动漫混过闸门)
 MOVIE_DURATION_S = 7200    # 电影估算时长 2h
 
-def estimate_bitrate_mbps(size_bytes, ep_count, is_movie=False):
+def estimate_bitrate_mbps(size_bytes, ep_count, is_movie=False, kind=None):
     """估算平均码率 (Mbps): 大小×8 / 总时长秒。用于判断公网可播性"""
     if ep_count <= 0:
         ep_count = 1
-    duration_s = (MOVIE_DURATION_S if is_movie else EP_DURATION_S) * ep_count
+    if is_movie:
+        unit = MOVIE_DURATION_S
+    elif kind == "anime":
+        unit = ANIME_DURATION_S
+    else:
+        unit = EP_DURATION_S
+    duration_s = unit * ep_count
     if duration_s <= 0:
         return 0
     return size_bytes * 8 / duration_s / 1_000_000
 
-def quality_fits_public(qualities, size_bytes, ep_count, is_movie=False):
+def quality_fits_public(qualities, size_bytes, ep_count, is_movie=False, kind=None):
     """判断当前源是否符合公网可播标准。
     返回: (fits, reason) — fits=True 达标直接入库; False 需搜索替代"""
     q_low = " ".join(qualities).lower()
     # 高码率标签: REMUX/原盘/蓝光 → 公网必卡
     has_high = ('remux' in q_low or '原盘' in q_low or 'bluray' in q_low
                 or '蓝光' in q_low or '高码率' in q_low or '高码' in q_low)
-    mbps = estimate_bitrate_mbps(size_bytes, ep_count, is_movie)
+    mbps = estimate_bitrate_mbps(size_bytes, ep_count, is_movie, kind)
     if has_high:
         return False, f"含REMUX/原盘/蓝光标签(公网必卡, ~{mbps:.0f}Mbps)"
     if mbps > PUBLIC_HARD_MBPS:
@@ -992,7 +1000,8 @@ if __name__ == "__main__":
 
     is_movie = (a["media_type"] == "movie")
     ep_count = max(len(eps), 1)
-    fits, fit_reason = quality_fits_public(a["qualities"], a["total_size"], ep_count, is_movie)
+    kind = "anime" if target_subdir == "动漫" else None
+    fits, fit_reason = quality_fits_public(a["qualities"], a["total_size"], ep_count, is_movie, kind)
 
     if not fits and not args.no_upgrade:
         print(f"  ⚠️ 当前源不达标: {fit_reason}")
