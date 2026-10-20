@@ -19,9 +19,9 @@ FEISHU_APP_SECRET = os.environ.get("FEISHU_APP_SECRET", "")
 BITABLE_APP_TOKEN = os.environ.get("BITABLE_APP_TOKEN", "")
 
 TABLES = {
-    "tv":    ("tblCQbsK6FBkGIY9",    "📺 名字"),
-    "anime": ("tblvXnrGj0Al03HL",   "🎞️ 名字"),
-    "movie": ("tblhSzGZwQ4SOBUe",   "🎬 名字"),
+    "tv":    ("tblCQbsK6FBkGIY9",    "名字"),
+    "anime": ("tblvXnrGj0Al03HL",   "名字"),
+    "movie": ("tblhSzGZwQ4SOBUe",   "名字"),
 }
 
 # 🔄追更中 状态 — 2026-08-10 表格改造后 状态字段读写均用选项名称(显示名)!

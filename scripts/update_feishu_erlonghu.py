@@ -32,7 +32,7 @@ STATUS = "optVZqcuvs"  # 🔄追更中 for 剧集表
 
 # Update record
 fields = {
-    "📺 名字": "二龙湖·村暖花开",
+    "名字": "二龙湖·村暖花开",
     "集数": EP_RANGE,
     "文件数": FILES,
     "大小(GB)": round(SIZE_GB, 1),
@@ -59,7 +59,7 @@ resp2 = urllib.request.urlopen(req2, timeout=15, context=ctx)
 record = json.loads(resp2.read())
 flds = record.get("data", {}).get("record", {}).get("fields", {})
 print(f"\nRecord verification:")
-print(f"  名字: {flds.get('📺 名字', '?')}")
+print(f"  名字: {flds.get('名字', '?')}")
 print(f"  集数: {flds.get('集数', '?')}")
 print(f"  文件数: {flds.get('文件数', '?')}")
 print(f"  大小: {flds.get('大小(GB)', '?')} GB")

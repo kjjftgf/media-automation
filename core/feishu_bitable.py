@@ -16,9 +16,9 @@ TABLES = {
 
 # 字段映射：表内显示名 → 字段ID
 # 三表字段名不同但结构相同
-FIELDS_TV =    {"name":"📺 名字","ep":"集数","status":"状态","quality":"质量","genre":"流派","year":"发行年份","tmdb":"TMDB ID","size":"大小(GB)","fc":"文件数"}
-FIELDS_ANIME = {"name":"🎞️ 名字","ep":"集数","status":"状态","quality":"质量","genre":"流派","year":"发行年份","tmdb":"TMDB ID","size":"大小(GB)","fc":"文件数"}
-FIELDS_MOVIE = {"name":"🎬 名字","ep":"集数","status":"状态","quality":"质量","genre":"流派","year":"发行年份","tmdb":"TMDB ID","size":"大小(GB)","fc":"文件数"}
+FIELDS_TV =    {"name":"名字","ep":"集数","status":"状态","quality":"质量","genre":"流派","year":"发行年份","tmdb":"TMDB ID","size":"大小(GB)","fc":"文件数"}
+FIELDS_ANIME = {"name":"名字","ep":"集数","status":"状态","quality":"质量","genre":"流派","year":"发行年份","tmdb":"TMDB ID","size":"大小(GB)","fc":"文件数"}
+FIELDS_MOVIE = {"name":"名字","ep":"集数","status":"状态","quality":"质量","genre":"流派","year":"发行年份","tmdb":"TMDB ID","size":"大小(GB)","fc":"文件数"}
 
 # 字段ID
 FIELDS_TV_ID =    {"name":"fld8hKbxBo","ep":"fldMtKpKs0","status":"fldFvmhF6M","quality":"fldIKfSR7d","genre":"fldviHRDkv","year":"fldDEOpmEE","tmdb":"fldfNZjl9d","size":"fldzwKHjvI","fc":"fldO4F1iB5"}
